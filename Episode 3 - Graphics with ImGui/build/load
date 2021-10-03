@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+function echo_green {
+	echo -e "\\e[32m$*\\e[0m"
+}
+
+function echo_orange {
+	echo -e "\\e[33m$*\\e[0m"
+}
+
+function echo_red {
+	echo -e "\\e[31m$*\\e[0m"
+}
+
+sven_pid=$(pidof svencoop_linux)
+if [ -z "$sven_pid" ]; then
+    echo_red "SvenCoop needs to be open before you can inject, exiting..."
+    exit 1
+fi
+
+filename="libhack.so"
+if [ ! -f $filename ]; then
+	echo_red "Could not find '${filename}'"
+	exit 1
+fi
+
+# Credit: Aixxe @ aixxe.net
+if grep -q "$filename" /proc/"$sven_pid"/maps; then
+    echo_orange "Hack is already injected, aborting..."
+    exit
+fi
+echo "Injecting: $filename"
+
+input="$(
+sudo gdb -n -q -batch-silent \
+  -ex "attach $sven_pid" \
+  -ex "b SDL_GL_SwapWindow" \
+  -ex "c" \
+  -ex "set \$dlopen = (void*(*)(char*, int)) dlopen" \
+  -ex "call \$dlopen(\"$(pwd)/$filename\", 2)" \
+  -ex "detach" \
+  -ex "quit"
+)"
+
+last_line="${input##*$'\n'}"
+
+echo $last_line
+if [ "$last_line" != "\$1 = (void *) 0x0" ]; then
+    echo_green "Successfully injected!"
+else
+    echo_red "Injection failed, make sure you have compiled..."
+fi
